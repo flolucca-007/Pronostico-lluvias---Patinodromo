@@ -1,0 +1,1031 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pronóstico Patinódromo Mar del Plata</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Custom Styling & Fonts -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #090d16;
+            color: #f1f5f9;
+        }
+
+        /* Custom Scrollbar for Horizontal Hourly Cards */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        /* Pulse animation for NOW indicator */
+        @keyframes pulse-red {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.15); }
+        }
+        .pulse-now {
+            animation: pulse-red 2s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between p-3 sm:p-6 max-w-5xl mx-auto selection:bg-blue-600 selection:text-white">
+
+    <div>
+        <!-- TOP APP HEADER -->
+        <header class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-4 mb-4 border-b border-slate-800">
+            <div>
+                <div class="flex items-center gap-2">
+                    <span class="inline-block w-3 h-3 rounded-full bg-blue-500 shadow-sm shadow-blue-500/50"></span>
+                    <h1 class="text-xl sm:text-2xl font-black tracking-tight text-white">
+                        Patinódromo Mar del Plata
+                    </h1>
+                </div>
+                <p class="text-xs text-slate-400 mt-0.5 font-medium">
+                    Pronóstico meteorológico • Pista Municipal "Adalberto Lugea"
+                </p>
+            </div>
+
+            <!-- Clock & Refresh Button -->
+            <div class="flex items-center gap-3 self-end sm:self-auto">
+                <div class="text-right">
+                    <span class="text-[10px] text-slate-400 font-semibold block uppercase tracking-wider">Hora Local</span>
+                    <span id="current-clock" class="text-sm font-extrabold text-slate-200">--:-- hs</span>
+                </div>
+                <button id="btn-refresh" onclick="fetchWeatherData()" 
+                        class="p-2.5 bg-slate-800/80 hover:bg-slate-700 active:scale-95 border border-slate-700 rounded-xl transition-all text-slate-300 hover:text-white shadow"
+                        title="Actualizar datos">
+                    <svg id="refresh-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- TRACK STATUS BADGE (REAL-TIME ADAPTIVE SUMMARY) -->
+        <div id="track-status-badge" class="mb-5 p-4 rounded-2xl border flex items-center justify-between gap-3 transition-all bg-slate-900 border-slate-800">
+            <div class="flex items-center gap-3.5">
+                <div id="status-indicator-dot" class="w-4 h-4 rounded-full bg-slate-600 flex-shrink-0"></div>
+                <div>
+                    <h2 id="status-text" class="text-base sm:text-lg font-black text-slate-300">
+                        Cargando estado de la pista...
+                    </h2>
+                    <p id="status-subtext" class="text-xs text-slate-400">
+                        Consultando API de pronóstico Open-Meteo
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- CURRENT METRICS OVERVIEW STRIP -->
+        <div class="grid grid-cols-3 gap-2 sm:gap-4 mb-6">
+            <!-- Rain Now -->
+            <div class="bg-slate-900/90 border border-slate-800/80 rounded-2xl p-3 sm:p-4 flex flex-col items-center sm:items-start">
+                <span class="text-[10px] sm:text-xs text-slate-400 font-medium uppercase tracking-wider mb-1 flex items-center gap-1">
+                    💧 Lluvia Ahora
+                </span>
+                <div id="now-precip" class="text-lg sm:text-2xl font-black text-blue-400">-- <span class="text-xs font-normal text-slate-400">mm/h</span></div>
+            </div>
+
+            <!-- Temp Now -->
+            <div class="bg-slate-900/90 border border-slate-800/80 rounded-2xl p-3 sm:p-4 flex flex-col items-center sm:items-start">
+                <span class="text-[10px] sm:text-xs text-slate-400 font-medium uppercase tracking-wider mb-1 flex items-center gap-1">
+                    🌡️ Temp. Actual
+                </span>
+                <div id="now-temp" class="text-lg sm:text-2xl font-black text-amber-400">-- <span class="text-xs font-normal text-slate-400">°C</span></div>
+            </div>
+
+            <!-- Wind Now -->
+            <div class="bg-slate-900/90 border border-slate-800/80 rounded-2xl p-3 sm:p-4 flex flex-col items-center sm:items-start">
+                <span class="text-[10px] sm:text-xs text-slate-400 font-medium uppercase tracking-wider mb-1 flex items-center gap-1">
+                    💨 Viento
+                </span>
+                <div id="now-wind" class="text-lg sm:text-2xl font-black text-emerald-400">-- <span class="text-xs font-normal text-slate-400">km/h</span></div>
+            </div>
+        </div>
+
+        <!-- NAVIGATION TABS -->
+        <div class="flex bg-slate-900 p-1 rounded-2xl border border-slate-800 mb-5">
+            <button id="tab-tiempo" onclick="switchView('tiempo')" 
+                    class="flex-1 py-3 px-4 rounded-xl font-bold text-sm sm:text-base flex items-center justify-center gap-2 transition-all bg-blue-600 text-white shadow-lg">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                Vista TIEMPO (Hora a Hora)
+            </button>
+            <button id="tab-grafico" onclick="switchView('grafico')" 
+                    class="flex-1 py-3 px-4 rounded-xl font-semibold text-sm sm:text-base text-slate-400 hover:text-white hover:bg-slate-800/50 flex items-center justify-center gap-2 transition-all">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/>
+                </svg>
+                Vista GRÁFICO (Lluvia)
+            </button>
+        </div>
+
+        <!-- LOADING STATE CONTAINER -->
+        <div id="loading-state" class="py-16 flex flex-col items-center justify-center text-center">
+            <div class="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mb-4"></div>
+            <p class="text-slate-300 font-semibold text-base">Obteniendo pronóstico en vivo...</p>
+            <p class="text-slate-500 text-xs mt-1">Conectando con Open-Meteo API</p>
+        </div>
+
+        <!-- ERROR STATE CONTAINER -->
+        <div id="error-state" class="hidden my-8 p-6 bg-red-950/40 border border-red-500/40 rounded-2xl text-center">
+            <svg class="w-12 h-12 text-red-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+            </svg>
+            <h3 class="text-base font-bold text-red-300 mb-1">No se pudo cargar el pronóstico</h3>
+            <p id="error-message-text" class="text-xs text-red-400/90 mb-4">Verificá tu conexión a internet o reintentá en unos minutos.</p>
+            <button onclick="fetchWeatherData()" class="px-5 py-2.5 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded-xl transition-all shadow">
+                Reintentar Carga
+            </button>
+        </div>
+
+        <!-- VIEW 1: HOURLY CARDS SLIDER ("TIEMPO") -->
+        <div id="view-tiempo" class="hidden flex-col gap-3">
+            <div class="flex justify-between items-center px-1">
+                <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">Próximas 48 Horas</h3>
+                <span class="text-[11px] text-slate-500">Deslizá horizontalmente ➔</span>
+            </div>
+
+            <!-- Horizontal Cards Scrollable Container -->
+            <div id="hourly-container" class="flex gap-3 overflow-x-auto pb-4 pt-1 px-1 no-scrollbar snap-x touch-pan-x">
+                <!-- Cards injected dynamically via JS -->
+            </div>
+        </div>
+
+        <!-- VIEW 2: CANVAS RAIN CHART ("GRÁFICO") -->
+        <div id="view-grafico" class="hidden flex-col">
+            <!-- Top Controls Toolbar for Chart -->
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-3">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+                    <h3 class="text-sm font-bold text-slate-200">Intensidad de Lluvia (mm/h)</h3>
+                </div>
+
+                <!-- Range Selector Buttons -->
+                <div class="flex flex-col items-end gap-1 w-full sm:w-auto">
+                    <div class="flex bg-slate-900 p-1 rounded-xl border border-slate-800 w-full sm:w-auto">
+                        <button id="btn-range-2h" onclick="setChartRange(2)" 
+                                class="flex-1 sm:flex-none px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-blue-600 text-white shadow">
+                            Próximas 2 horas (15 min)
+                        </button>
+                        <button id="btn-range-24h" onclick="setChartRange(24)" 
+                                class="flex-1 sm:flex-none px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition-all">
+                            Próximas 24 horas
+                        </button>
+                    </div>
+                    <!-- Clarification notice for 15-minute data interpolation -->
+                    <p class="text-[10px] text-slate-500 italic text-right max-w-sm leading-tight">
+                        ℹ️ Para esta ubicación, los datos de 15 minutos son una interpolación de los datos horarios de Open-Meteo (no un modelo de mayor resolución), ya que los datos reales de 15 minutos solo están disponibles para Europa Central y Norteamérica.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Dry Window Banner -->
+            <div id="dry-window-banner" class="mb-3 p-3 bg-emerald-950/50 border border-emerald-500/40 rounded-xl text-xs sm:text-sm font-semibold text-emerald-300 flex items-center gap-2 shadow-sm">
+                <svg class="w-5 h-5 text-emerald-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <span id="dry-window-text">Calculando ventanas sin lluvia...</span>
+            </div>
+
+            <!-- Canvas Wrapper for responsive rendering -->
+            <div class="relative flex-1 min-h-[320px] w-full bg-slate-950/70 rounded-xl border border-slate-800/80 p-2 overflow-hidden flex items-center justify-center touch-none">
+                <canvas id="rain-chart" class="w-full h-full block cursor-crosshair select-none"></canvas>
+            </div>
+
+            <!-- Legend & Reference Keys -->
+            <div class="mt-4 pt-3 border-t border-slate-800 grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+                <div class="flex items-center gap-2 text-slate-300">
+                    <span class="w-3 h-3 rounded-full bg-red-500 inline-block pulse-now"></span>
+                    <span class="font-medium text-red-400">Línea Ahora</span>
+                </div>
+                <div class="flex items-center gap-2 text-slate-300">
+                    <span class="w-3 h-3 rounded bg-emerald-500/30 border border-emerald-500 inline-block"></span>
+                    <span class="text-emerald-400 font-medium">Ventana Seca (≥2h)</span>
+                </div>
+                <div class="flex items-center gap-2 text-slate-300">
+                    <span class="w-3 h-0.5 bg-cyan-400 inline-block"></span>
+                    <span>Débil (&lt; 2 mm/h)</span>
+                </div>
+                <div class="flex items-center gap-2 text-slate-300">
+                    <span class="w-3 h-0.5 bg-amber-400 inline-block"></span>
+                    <span>Moderada (2-7 mm/h)</span>
+                </div>
+                <div class="flex items-center gap-2 text-slate-300">
+                    <span class="w-3 h-0.5 bg-red-400 inline-block"></span>
+                    <span>Fuerte (&gt; 7 mm/h)</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- FOOTER -->
+    <footer class="mt-8 text-center text-xs text-slate-500 py-3 border-t border-slate-800/60 flex flex-col sm:flex-row justify-between items-center gap-2">
+        <p>Patinódromo Municipal Adalberto Lugea • Mar del Plata, Argentina</p>
+        <p class="flex items-center gap-1">
+            Datos provistos por <a href="https://open-meteo.com/" target="_blank" rel="noopener" class="text-blue-400 hover:underline">Open-Meteo API</a>
+        </p>
+    </footer>
+
+    <script>
+        // CONFIGURATION & CONSTANTS
+        const API_URL = "https://api.open-meteo.com/v1/forecast?latitude=-38.018472&longitude=-57.577889&hourly=precipitation,temperature_2m,windspeed_10m&minutely_15=precipitation&forecast_days=2&timezone=America%2FArgentina%2FBuenos_Aires";
+        
+        // Application State
+        let weatherData = null;      // Full JSON payload from API
+        let currentView = 'tiempo';  // 'tiempo' or 'grafico'
+        let chartRangeHours = 2;     // 2 or 24 hours ahead
+        let currentIndex = 0;        // Index in hourly array corresponding to 'now'
+        let currentMinutelyIndex = 0;// Index in minutely_15 array corresponding to 'now'
+
+        // Interactive Touch/Mouse Canvas State
+        let isInteracting = false;
+        let touchX = null;
+
+        // DOM Element Helper Getters (Guarded against null references)
+        const getEl = (id) => document.getElementById(id);
+
+        /**
+         * Fetches weather data from Open-Meteo API
+         */
+        async function fetchWeatherData() {
+            showLoading();
+            const iconRefresh = getEl('refresh-icon');
+            if (iconRefresh) iconRefresh.classList.add('animate-spin');
+
+            try {
+                const response = await fetch(API_URL);
+                if (!response.ok) {
+                    throw new Error(`Error en el servidor: HTTP ${response.status}`);
+                }
+                const data = await response.json();
+                
+                if (!data || !data.hourly || !data.hourly.time) {
+                    throw new Error("El formato de datos devuelto es incompleto.");
+                }
+
+                weatherData = data;
+                findCurrentIndex();
+                updateUI();
+                hideLoading();
+            } catch (err) {
+                console.error("Error fetching forecast:", err);
+                showError(err.message || "Error al conectar con el servicio meteorológico.");
+            } finally {
+                if (iconRefresh) iconRefresh.classList.remove('animate-spin');
+            }
+        }
+
+        /**
+         * Determines the index in the 48-hour array closest to the current time
+         */
+        function findCurrentIndex() {
+            if (!weatherData) return;
+            
+            const now = new Date();
+            
+            // Find index for hourly data
+            if (weatherData.hourly && weatherData.hourly.time) {
+                const times = weatherData.hourly.time;
+                let closestIdx = 0;
+                let minDiff = Infinity;
+
+                for (let i = 0; i < times.length; i++) {
+                    const itemDate = new Date(times[i]);
+                    const diff = Math.abs(itemDate.getTime() - now.getTime());
+                    if (diff < minDiff) {
+                        minDiff = diff;
+                        closestIdx = i;
+                    }
+                }
+                currentIndex = closestIdx;
+            }
+
+            // Find index for 15-minute data (used for smooth 2h chart view)
+            if (weatherData.minutely_15 && weatherData.minutely_15.time) {
+                const minTimes = weatherData.minutely_15.time;
+                let minClosestIdx = 0;
+                let minMinDiff = Infinity;
+
+                for (let i = 0; i < minTimes.length; i++) {
+                    const itemDate = new Date(minTimes[i]);
+                    const diff = Math.abs(itemDate.getTime() - now.getTime());
+                    if (diff < minMinDiff) {
+                        minMinDiff = diff;
+                        minClosestIdx = i;
+                    }
+                }
+                currentMinutelyIndex = minClosestIdx;
+            }
+        }
+
+        /**
+         * Updates top header metrics & track condition status
+         */
+        function updateHeaderMetrics() {
+            if (!weatherData) return;
+
+            const hourly = weatherData.hourly;
+            const nowPrecip = hourly.precipitation[currentIndex] ?? 0;
+            const nowTemp = hourly.temperature_2m[currentIndex] ?? 0;
+            const nowWind = hourly.windspeed_10m[currentIndex] ?? 0;
+
+            // DOM elements update
+            const elPrecip = getEl('now-precip');
+            const elTemp = getEl('now-temp');
+            const elWind = getEl('now-wind');
+            
+            if (elPrecip) elPrecip.innerHTML = `${nowPrecip.toFixed(1)} <span class="text-xs font-normal text-slate-400">mm/h</span>`;
+            if (elTemp) elTemp.innerHTML = `${Math.round(nowTemp)} <span class="text-xs font-normal text-slate-400">°C</span>`;
+            if (elWind) elWind.innerHTML = `${Math.round(nowWind)} <span class="text-xs font-normal text-slate-400">km/h</span>`;
+
+            // Update real-time clock indicator
+            const now = new Date();
+            const hoursStr = String(now.getHours()).padStart(2, '0');
+            const minsStr = String(now.getMinutes()).padStart(2, '0');
+            const clockEl = getEl('current-clock');
+            if (clockEl) clockEl.textContent = `${hoursStr}:${minsStr} hs`;
+
+            // Roller skating track condition logic
+            const statusBadge = getEl('track-status-badge');
+            const statusDot = getEl('status-indicator-dot');
+            const statusText = getEl('status-text');
+            const statusSubtext = getEl('status-subtext');
+
+            if (!statusBadge || !statusDot || !statusText || !statusSubtext) return;
+
+            if (nowPrecip === 0) {
+                // DRY TRACK / GOOD
+                statusBadge.className = "mb-5 p-4 rounded-2xl border flex items-center justify-between gap-3 transition-colors bg-emerald-950/40 border-emerald-500/40";
+                statusDot.className = "w-4 h-4 rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/50 flex-shrink-0";
+                statusText.textContent = "PISTA SECA - APTO PARA PATINAR";
+                statusText.className = "text-base sm:text-lg font-black text-emerald-400";
+                statusSubtext.textContent = "Sin precipitación registrada en este momento";
+            } else if (nowPrecip < 1.0) {
+                // LIGHT RAIN / WARNING
+                statusBadge.className = "mb-5 p-4 rounded-2xl border flex items-center justify-between gap-3 transition-colors bg-amber-950/40 border-amber-500/40";
+                statusDot.className = "w-4 h-4 rounded-full bg-amber-500 shadow-lg shadow-amber-500/50 animate-ping flex-shrink-0";
+                statusText.textContent = "LLUVIA LIGERA - PRECAUCIÓN EN PISTA";
+                statusText.className = "text-base sm:text-lg font-black text-amber-400";
+                statusSubtext.textContent = "Superficie posiblemente resbaladiza";
+            } else {
+                // HEAVY RAIN / CANCELLED
+                statusBadge.className = "mb-5 p-4 rounded-2xl border flex items-center justify-between gap-3 transition-colors bg-red-950/50 border-red-500/50";
+                statusDot.className = "w-4 h-4 rounded-full bg-red-500 shadow-lg shadow-red-500/50 flex-shrink-0";
+                statusText.textContent = "PISTA MOJADA - RIESGO / SUSPENDIDO";
+                statusText.className = "text-base sm:text-lg font-black text-red-400";
+                statusSubtext.textContent = "Precipitación intensa en desarrollo";
+            }
+        }
+
+        /**
+         * Renders Vista 1 (Hora a hora cards)
+         */
+        function renderHourlyCards() {
+            if (!weatherData) return;
+
+            const elHourlyContainer = getEl('hourly-container');
+            if (!elHourlyContainer) return;
+
+            const hourly = weatherData.hourly;
+            const times = hourly.time;
+            elHourlyContainer.innerHTML = '';
+
+            let currentCardElement = null;
+
+            times.forEach((timeStr, idx) => {
+                const date = new Date(timeStr);
+                const hourNum = date.getHours();
+                const formattedHour = `${String(hourNum).padStart(2, '0')}:00`;
+                const dayName = date.toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric' });
+
+                const precip = hourly.precipitation[idx] ?? 0;
+                const temp = hourly.temperature_2m[idx] ?? 0;
+                const wind = hourly.windspeed_10m[idx] ?? 0;
+
+                const isNow = (idx === currentIndex);
+
+                // Determine Weather Icon & Styles based on precipitation
+                let iconSvg = '';
+                let precipBadgeStyle = 'bg-slate-800 text-slate-400 border-slate-700';
+
+                if (precip === 0) {
+                    if (hourNum >= 7 && hourNum <= 19) {
+                        // Sun
+                        iconSvg = `<svg class="w-8 h-8 text-amber-400 my-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>`;
+                    } else {
+                        // Moon
+                        iconSvg = `<svg class="w-8 h-8 text-indigo-300 my-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>`;
+                    }
+                } else if (precip < 1.0) {
+                    // Light Rain
+                    iconSvg = `<svg class="w-8 h-8 text-cyan-400 my-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 00-9.78 2.096A4.001 4.001 0 003 15z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19v2m-4-1v2m8-2v2"/></svg>`;
+                    precipBadgeStyle = 'bg-blue-900/60 text-blue-300 border-blue-500/50 font-bold';
+                } else {
+                    // Moderate / Heavy Rain
+                    iconSvg = `<svg class="w-8 h-8 text-blue-500 my-2 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>`;
+                    precipBadgeStyle = 'bg-blue-600 text-white font-extrabold border-blue-400 shadow-md shadow-blue-600/50';
+                }
+
+                // Card Container
+                const card = document.createElement('div');
+                card.className = `flex-shrink-0 w-28 sm:w-32 rounded-2xl p-3 flex flex-col items-center justify-between text-center transition-all snap-start border ${
+                    isNow 
+                        ? 'bg-blue-600/25 border-red-500 ring-2 ring-red-500/50 shadow-lg scale-105 my-1' 
+                        : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
+                }`;
+
+                card.innerHTML = `
+                    <div class="w-full border-b border-slate-800/80 pb-1.5 mb-1">
+                        ${isNow ? '<span class="bg-red-600 text-white text-[10px] uppercase font-black px-2 py-0.5 rounded-full inline-block mb-1">AHORA</span>' : ''}
+                        <span class="text-xs font-semibold text-slate-400 block capitalize">${dayName}</span>
+                        <span class="text-base font-extrabold text-white">${formattedHour}</span>
+                    </div>
+
+                    ${iconSvg}
+
+                    <div class="my-1">
+                        <span class="text-lg font-black text-white">${Math.round(temp)}°C</span>
+                    </div>
+
+                    <div class="w-full mt-1 pt-1.5 border-t border-slate-800/80 flex flex-col gap-1">
+                        <div class="px-2 py-1 rounded-lg border text-[11px] ${precipBadgeStyle}">
+                            💧 ${precip.toFixed(1)} <span class="text-[9px]">mm/h</span>
+                        </div>
+                        <div class="text-[10px] text-slate-400 flex items-center justify-center gap-0.5">
+                            💨 ${Math.round(wind)} <span class="text-[9px]">km/h</span>
+                        </div>
+                    </div>
+                `;
+
+                if (isNow) {
+                    currentCardElement = card;
+                }
+
+                elHourlyContainer.appendChild(card);
+            });
+
+            // Scroll current hour card into view smoothly
+            if (currentCardElement) {
+                setTimeout(() => {
+                    currentCardElement.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                }, 100);
+            }
+        }
+
+        /**
+         * STREAMING_CHUNK:Drawing Canvas Rain Chart with interactive overlays and dry windows...
+         * Renders Vista 2 (Canvas Rain Intensity Line/Area Chart)
+         */
+        function drawRainChart() {
+            const canvas = getEl('rain-chart');
+            if (!weatherData || !canvas) return;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+
+            const is2h = (chartRangeHours === 2);
+            let timeSlice = [];
+            let precipSlice = [];
+
+            // Select data resolution based on selected range
+            if (is2h && weatherData.minutely_15 && weatherData.minutely_15.time) {
+                // 15-minute resolution for 2 hours (9 data points: 0m, 15m, 30m, ..., 120m)
+                const startIndex = currentMinutelyIndex;
+                const endIndex = Math.min(startIndex + 9, weatherData.minutely_15.time.length);
+                timeSlice = weatherData.minutely_15.time.slice(startIndex, endIndex);
+                precipSlice = weatherData.minutely_15.precipitation.slice(startIndex, endIndex);
+            } else {
+                // Hourly resolution for 24 hours
+                const hourly = weatherData.hourly;
+                const startIndex = currentIndex;
+                const endIndex = Math.min(startIndex + chartRangeHours, hourly.time.length);
+                timeSlice = hourly.time.slice(startIndex, endIndex);
+                precipSlice = hourly.precipitation.slice(startIndex, endIndex);
+            }
+
+            const displaySliceCount = timeSlice.length;
+
+            // Setup Canvas Resolution (Retina DPI Crisp scaling)
+            const rect = canvas.parentElement.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            ctx.resetTransform();
+            ctx.scale(dpr, dpr);
+
+            const width = rect.width;
+            const height = rect.height;
+
+            // Clear Background
+            ctx.clearRect(0, 0, width, height);
+
+            // Chart Padding Specs
+            const padding = {
+                top: 30,
+                bottom: 45,
+                left: 55,
+                right: 25
+            };
+
+            const graphWidth = width - padding.left - padding.right;
+            const graphHeight = height - padding.top - padding.bottom;
+
+            // Determine Y-axis upper limit
+            const maxValInData = Math.max(...precipSlice, 0);
+            const maxY = Math.max(8, Math.ceil(maxValInData + 1));
+
+            // Reference Level Thresholds (mm/h)
+            const refLevels = [
+                { val: 0.5, label: "Débil (0.5 mm)", color: "#38bdf8" },
+                { val: 2.0, label: "Moderada (2 mm)", color: "#fbbf24" },
+                { val: 7.0, label: "Fuerte (7 mm)", color: "#f87171" }
+            ];
+
+            // Helper Y coordinate generator
+            const getY = (val) => {
+                const norm = Math.min(val, maxY) / maxY;
+                return padding.top + graphHeight * (1 - norm);
+            };
+
+            // Helper X coordinate generator
+            const getX = (i) => {
+                if (displaySliceCount <= 1) return padding.left + graphWidth / 2;
+                return padding.left + (i / (displaySliceCount - 1)) * graphWidth;
+            };
+
+            // -------------------------------------------------------------
+            // DETECT & HIGHLIGHT DRY WINDOWS (< 0.1 mm/h for >= 2 hours)
+            // -------------------------------------------------------------
+            const minStepsForDryWindow = is2h ? 8 : 2; // 8 x 15m = 2 hours, or 2 x 1h = 2 hours
+            const dryWindows = findDryWindows(precipSlice, minStepsForDryWindow);
+            
+            // Draw dry window green background bands
+            dryWindows.forEach(w => {
+                const x1 = getX(w.startIdx);
+                const x2 = getX(w.endIdx);
+                const bandWidth = Math.max(x2 - x1, 8);
+
+                ctx.fillStyle = "rgba(16, 185, 129, 0.18)";
+                ctx.fillRect(x1, padding.top, bandWidth, graphHeight);
+
+                // Top border for the dry band
+                ctx.strokeStyle = "rgba(52, 211, 153, 0.6)";
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(x1, padding.top);
+                ctx.lineTo(x1 + bandWidth, padding.top);
+                ctx.stroke();
+            });
+
+            // Update Dry Window Text Banner above chart
+            const dryBannerTextEl = getEl('dry-window-text');
+            if (dryBannerTextEl) {
+                if (dryWindows.length > 0) {
+                    const firstWin = dryWindows[0];
+                    const startDate = new Date(timeSlice[firstWin.startIdx]);
+                    
+                    const endDate = new Date(timeSlice[firstWin.endIdx]);
+                    if (is2h) {
+                        endDate.setMinutes(endDate.getMinutes() + 15);
+                    } else {
+                        endDate.setHours(endDate.getHours() + 1);
+                    }
+
+                    const startStr = `${String(startDate.getHours()).padStart(2, '0')}:${String(startDate.getMinutes()).padStart(2, '0')}`;
+                    const endStr = `${String(endDate.getHours()).padStart(2, '0')}:${String(endDate.getMinutes()).padStart(2, '0')}`;
+
+                    dryBannerTextEl.textContent = `Ventana sin lluvia: ${startStr} a ${endStr} hs`;
+                } else {
+                    dryBannerTextEl.textContent = "No se detectan ventanas sin lluvia de al menos 2 horas en este período";
+                }
+            }
+
+            // 1. Draw Grid & Reference Lines
+            refLevels.forEach(ref => {
+                if (ref.val <= maxY) {
+                    const y = getY(ref.val);
+
+                    ctx.beginPath();
+                    ctx.setLineDash([4, 4]);
+                    ctx.strokeStyle = ref.color + "66";
+                    ctx.lineWidth = 1.5;
+                    ctx.moveTo(padding.left, y);
+                    ctx.lineTo(width - padding.right, y);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+
+                    ctx.fillStyle = ref.color;
+                    ctx.font = "bold 10px Inter, sans-serif";
+                    ctx.textAlign = "right";
+                    ctx.fillText(ref.label, padding.left - 6, y + 3);
+                }
+            });
+
+            // Y-Axis Baseline (0 mm/h)
+            const zeroY = getY(0);
+            ctx.beginPath();
+            ctx.strokeStyle = "rgba(148, 163, 184, 0.3)";
+            ctx.lineWidth = 1;
+            ctx.moveTo(padding.left, zeroY);
+            ctx.lineTo(width - padding.right, zeroY);
+            ctx.stroke();
+
+            ctx.fillStyle = "#94a3b8";
+            ctx.font = "10px Inter, sans-serif";
+            ctx.textAlign = "right";
+            ctx.fillText("0 mm/h", padding.left - 6, zeroY + 3);
+
+            // 2. Plot Rain Intensity Gradient Area & Line
+            if (precipSlice.length > 0) {
+                const areaGradient = ctx.createLinearGradient(0, padding.top, 0, zeroY);
+                areaGradient.addColorStop(0, "rgba(59, 130, 246, 0.6)");
+                areaGradient.addColorStop(1, "rgba(59, 130, 246, 0.0)");
+
+                ctx.beginPath();
+                ctx.moveTo(getX(0), zeroY);
+
+                for (let i = 0; i < precipSlice.length; i++) {
+                    const x = getX(i);
+                    const y = getY(precipSlice[i]);
+                    ctx.lineTo(x, y);
+                }
+
+                ctx.lineTo(getX(precipSlice.length - 1), zeroY);
+                ctx.closePath();
+                ctx.fillStyle = areaGradient;
+                ctx.fill();
+
+                ctx.beginPath();
+                for (let i = 0; i < precipSlice.length; i++) {
+                    const x = getX(i);
+                    const y = getY(precipSlice[i]);
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.strokeStyle = "#3b82f6";
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                // Plot Data Points
+                for (let i = 0; i < precipSlice.length; i++) {
+                    const x = getX(i);
+                    const y = getY(precipSlice[i]);
+
+                    ctx.beginPath();
+                    ctx.arc(x, y, is2h ? 3 : 4, 0, Math.PI * 2);
+                    ctx.fillStyle = "#60a5fa";
+                    ctx.fill();
+                    ctx.strokeStyle = "#1e293b";
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+
+                    // Display value on top of point if non-zero or in 2h view when not hovering
+                    if ((precipSlice[i] > 0 || is2h) && !isInteracting) {
+                        ctx.fillStyle = "#ffffff";
+                        ctx.font = is2h ? "9px Inter, sans-serif" : "bold 11px Inter, sans-serif";
+                        ctx.textAlign = "center";
+                        ctx.fillText(`${precipSlice[i].toFixed(1)}`, x, y - 8);
+                    }
+                }
+            }
+
+            // 3. Red "AHORA" Vertical Marker Line
+            const nowX = getX(0);
+
+            ctx.beginPath();
+            ctx.setLineDash([3, 3]);
+            ctx.strokeStyle = "#ef4444";
+            ctx.lineWidth = 2.5;
+            ctx.moveTo(nowX, padding.top - 10);
+            ctx.lineTo(nowX, height - padding.bottom + 5);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            ctx.fillStyle = "#ef4444";
+            ctx.beginPath();
+            if (ctx.roundRect) {
+                ctx.roundRect(nowX - 22, padding.top - 24, 44, 18, 4);
+            } else {
+                ctx.rect(nowX - 22, padding.top - 24, 44, 18);
+            }
+            ctx.fill();
+
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 10px Inter, sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText("AHORA", nowX, padding.top - 11);
+
+            // 4. X-Axis Time Labels
+            const labelStep = is2h ? 2 : Math.ceil(displaySliceCount / 8);
+
+            for (let i = 0; i < displaySliceCount; i += labelStep) {
+                const x = getX(i);
+                const d = new Date(timeSlice[i]);
+                const hoursStr = String(d.getHours()).padStart(2, '0');
+                const minsStr = String(d.getMinutes()).padStart(2, '0');
+                const timeStr = `${hoursStr}:${minsStr}`;
+
+                ctx.fillStyle = (i === 0) ? "#ef4444" : "#94a3b8";
+                ctx.font = (i === 0) ? "bold 11px Inter, sans-serif" : "10px Inter, sans-serif";
+                ctx.textAlign = "center";
+                ctx.fillText(timeStr, x, height - padding.bottom + 20);
+            }
+
+            // -------------------------------------------------------------
+            // INTERACTIVE TOOLTIP OVERLAY (TOUCH / MOUSE DRAG)
+            // -------------------------------------------------------------
+            if (isInteracting && touchX !== null && displaySliceCount > 0) {
+                let closestIdx = 0;
+                let minDist = Infinity;
+
+                for (let i = 0; i < displaySliceCount; i++) {
+                    const dist = Math.abs(getX(i) - touchX);
+                    if (dist < minDist) {
+                        minDist = dist;
+                        closestIdx = i;
+                    }
+                }
+
+                const hoverX = getX(closestIdx);
+                const hoverY = getY(precipSlice[closestIdx]);
+                const hoverPrecip = precipSlice[closestIdx];
+                const hoverDate = new Date(timeSlice[closestIdx]);
+
+                const dayName = hoverDate.toLocaleDateString('es-AR', { weekday: 'short' });
+                const hoursStr = String(hoverDate.getHours()).padStart(2, '0');
+                const minsStr = String(hoverDate.getMinutes()).padStart(2, '0');
+                const timeStr = `${hoursStr}:${minsStr} hs`;
+
+                ctx.beginPath();
+                ctx.strokeStyle = "#00f0ff";
+                ctx.lineWidth = 1.5;
+                ctx.moveTo(hoverX, padding.top);
+                ctx.lineTo(hoverX, height - padding.bottom);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.arc(hoverX, hoverY, 6, 0, Math.PI * 2);
+                ctx.fillStyle = "#00f0ff";
+                ctx.fill();
+                ctx.strokeStyle = "#ffffff";
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                const tooltipWidth = 110;
+                const tooltipHeight = 46;
+                let tooltipX = hoverX - tooltipWidth / 2;
+                let tooltipY = hoverY - tooltipHeight - 12;
+
+                if (tooltipX < padding.left) tooltipX = padding.left;
+                if (tooltipX + tooltipWidth > width - padding.right) tooltipX = width - padding.right - tooltipWidth;
+                if (tooltipY < padding.top) tooltipY = hoverY + 12;
+
+                ctx.fillStyle = "rgba(15, 23, 42, 0.92)";
+                ctx.strokeStyle = "#00f0ff";
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                if (ctx.roundRect) {
+                    ctx.roundRect(tooltipX, tooltipY, tooltipWidth, tooltipHeight, 8);
+                } else {
+                    ctx.rect(tooltipX, tooltipY, tooltipWidth, tooltipHeight);
+                }
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.fillStyle = "#94a3b8";
+                ctx.font = "bold 10px Inter, sans-serif";
+                ctx.textAlign = "center";
+                ctx.fillText(`${dayName.toUpperCase()} ${timeStr}`, tooltipX + tooltipWidth / 2, tooltipY + 16);
+
+                ctx.fillStyle = hoverPrecip > 0 ? "#38bdf8" : "#34d399";
+                ctx.font = "bold 12px Inter, sans-serif";
+                ctx.fillText(`💧 ${hoverPrecip.toFixed(1)} mm/h`, tooltipX + tooltipWidth / 2, tooltipY + 34);
+            }
+        }
+
+        /**
+         * Helper function to detect continuous dry windows
+         */
+        function findDryWindows(precipArray, minSteps = 2) {
+            const windows = [];
+            let start = null;
+
+            for (let i = 0; i < precipArray.length; i++) {
+                if (precipArray[i] < 0.1) {
+                    if (start === null) start = i;
+                } else {
+                    if (start !== null) {
+                        const duration = i - start;
+                        if (duration >= minSteps) {
+                            windows.push({ startIdx: start, endIdx: i - 1, count: duration });
+                        }
+                        start = null;
+                    }
+                }
+            }
+
+            if (start !== null) {
+                const duration = precipArray.length - start;
+                if (duration >= minSteps) {
+                    windows.push({ startIdx: start, endIdx: precipArray.length - 1, count: duration });
+                }
+            }
+
+            return windows;
+        }
+
+        /**
+         * Setup Event Listeners for Touch and Mouse Canvas Interactivity
+         */
+        function setupChartInteractivity() {
+            const canvas = getEl('rain-chart');
+            if (!canvas) return;
+
+            function handlePointer(e) {
+                if (!weatherData || currentView !== 'grafico') return;
+
+                const rect = canvas.getBoundingClientRect();
+                let clientX;
+
+                if (e.touches && e.touches.length > 0) {
+                    clientX = e.touches[0].clientX;
+                } else {
+                    clientX = e.clientX;
+                }
+
+                touchX = clientX - rect.left;
+                isInteracting = true;
+                drawRainChart();
+            }
+
+            function handlePointerEnd() {
+                isInteracting = false;
+                touchX = null;
+                drawRainChart();
+            }
+
+            // Mouse Events
+            canvas.addEventListener('mousedown', handlePointer);
+            canvas.addEventListener('mousemove', (e) => {
+                if (isInteracting || e.buttons === 1) {
+                    handlePointer(e);
+                }
+            });
+            canvas.addEventListener('mouseup', handlePointerEnd);
+            canvas.addEventListener('mouseleave', handlePointerEnd);
+
+            // Touch Events (Tactile feedback)
+            canvas.addEventListener('touchstart', (e) => {
+                handlePointer(e);
+            }, { passive: true });
+
+            canvas.addEventListener('touchmove', (e) => {
+                handlePointer(e);
+            }, { passive: true });
+
+            canvas.addEventListener('touchend', handlePointerEnd);
+            canvas.addEventListener('touchcancel', handlePointerEnd);
+        }
+
+        /**
+         * View Switcher Handler ('tiempo' | 'grafico')
+         */
+        function switchView(viewName) {
+            currentView = viewName;
+
+            const btnTiempo = getEl('tab-tiempo');
+            const btnGrafico = getEl('tab-grafico');
+            const elViewTiempo = getEl('view-tiempo');
+            const elViewGrafico = getEl('view-grafico');
+
+            if (!elViewTiempo || !elViewGrafico) return;
+
+            if (viewName === 'tiempo') {
+                elViewTiempo.classList.remove('hidden');
+                elViewTiempo.classList.add('flex');
+                elViewGrafico.classList.add('hidden');
+                elViewGrafico.classList.remove('flex');
+
+                if (btnTiempo) btnTiempo.className = "flex-1 py-3 px-4 rounded-xl font-bold text-sm sm:text-base flex items-center justify-center gap-2 transition-all bg-blue-600 text-white shadow-lg";
+                if (btnGrafico) btnGrafico.className = "flex-1 py-3 px-4 rounded-xl font-semibold text-sm sm:text-base text-slate-400 hover:text-white hover:bg-slate-800/50 flex items-center justify-center gap-2 transition-all";
+                
+                renderHourlyCards();
+            } else {
+                elViewGrafico.classList.remove('hidden');
+                elViewGrafico.classList.add('flex');
+                elViewTiempo.classList.add('hidden');
+                elViewTiempo.classList.remove('flex');
+
+                if (btnGrafico) btnGrafico.className = "flex-1 py-3 px-4 rounded-xl font-bold text-sm sm:text-base flex items-center justify-center gap-2 transition-all bg-blue-600 text-white shadow-lg";
+                if (btnTiempo) btnTiempo.className = "flex-1 py-3 px-4 rounded-xl font-semibold text-sm sm:text-base text-slate-400 hover:text-white hover:bg-slate-800/50 flex items-center justify-center gap-2 transition-all";
+
+                // Trigger render after view transition layout pass
+                requestAnimationFrame(() => {
+                    drawRainChart();
+                });
+            }
+        }
+
+        /**
+         * Chart Range Selector Handler (2 vs 24 hours)
+         */
+        function setChartRange(hours) {
+            chartRangeHours = hours;
+
+            const btn2h = getEl('btn-range-2h');
+            const btn24h = getEl('btn-range-24h');
+
+            if (btn2h && btn24h) {
+                if (hours === 2) {
+                    btn2h.className = "flex-1 sm:flex-none px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-blue-600 text-white shadow";
+                    btn24h.className = "flex-1 sm:flex-none px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition-all";
+                } else {
+                    btn24h.className = "flex-1 sm:flex-none px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-blue-600 text-white shadow";
+                    btn2h.className = "flex-1 sm:flex-none px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white transition-all";
+                }
+            }
+
+            drawRainChart();
+        }
+
+        /**
+         * Safe UI State View toggles
+         */
+        function showLoading() {
+            const elLoading = getEl('loading-state');
+            const elError = getEl('error-state');
+            const elViewTiempo = getEl('view-tiempo');
+            const elViewGrafico = getEl('view-grafico');
+
+            if (elLoading) elLoading.classList.remove('hidden');
+            if (elError) elError.classList.add('hidden');
+            if (elViewTiempo) elViewTiempo.classList.add('hidden');
+            if (elViewGrafico) elViewGrafico.classList.add('hidden');
+        }
+
+        function hideLoading() {
+            const elLoading = getEl('loading-state');
+            const elError = getEl('error-state');
+
+            if (elLoading) elLoading.classList.add('hidden');
+            if (elError) elError.classList.add('hidden');
+            switchView(currentView);
+        }
+
+        function showError(msg) {
+            const elLoading = getEl('loading-state');
+            const elError = getEl('error-state');
+            const elViewTiempo = getEl('view-tiempo');
+            const elViewGrafico = getEl('view-grafico');
+            const elErrorMessage = getEl('error-message-text');
+
+            if (elLoading) elLoading.classList.add('hidden');
+            if (elViewTiempo) elViewTiempo.classList.add('hidden');
+            if (elViewGrafico) elViewGrafico.classList.add('hidden');
+            if (elError) elError.classList.remove('hidden');
+            if (elErrorMessage) elErrorMessage.textContent = msg;
+        }
+
+        function updateUI() {
+            updateHeaderMetrics();
+            if (currentView === 'tiempo') {
+                renderHourlyCards();
+            } else {
+                drawRainChart();
+            }
+        }
+
+        // Window Resize listener to keep Canvas chart properly sized
+        window.addEventListener('resize', () => {
+            if (currentView === 'grafico' && weatherData) {
+                drawRainChart();
+            }
+        });
+
+        // Initialize application on window load
+        window.onload = function() {
+            setupChartInteractivity();
+            fetchWeatherData();
+            
+            // Auto update local clock display every minute
+            setInterval(() => {
+                const now = new Date();
+                const hoursStr = String(now.getHours()).padStart(2, '0');
+                const minsStr = String(now.getMinutes()).padStart(2, '0');
+                const clockEl = getEl('current-clock');
+                if (clockEl) clockEl.textContent = `${hoursStr}:${minsStr} hs`;
+            }, 60000);
+        };
+    </script>
+</body>
+</html>
